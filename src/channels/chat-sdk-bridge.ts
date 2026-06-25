@@ -83,6 +83,13 @@ export interface ChatSdkBridgeConfig {
    * and reactions still target the head of the reply.
    */
   maxTextLength?: number;
+  /**
+   * When true, this adapter receives events over its own outbound connection
+   * (e.g. Slack Socket Mode) and needs no inbound webhook route. The bridge
+   * then skips registering one, so the shared webhook server never starts on
+   * its behalf and port 3000 stays free. Non-gateway adapters only.
+   */
+  socketMode?: boolean;
 }
 
 /**
@@ -388,12 +395,15 @@ export function createChatSdkBridge(config: ChatSdkBridgeConfig): ChannelAdapter
         };
         startGateway();
         log.info('Gateway listener started', { adapter: adapter.name });
-      } else {
+      } else if (!config.socketMode) {
         // Non-gateway adapters (Slack, Teams, GitHub, etc.) — register on the
         // shared webhook server. The handler key stays adapter.name (the
         // Chat instance's webhooks map is keyed by it); the route segment is
         // the instance, so each same-platform bridge gets its own URL (and
         // its own signing secret — platforms sign per-app).
+        // Skipped in socketMode: events arrive over the adapter's own outbound
+        // socket, so no inbound route is needed and the webhook server (port
+        // 3000) never starts.
         registerWebhookAdapter(chat, adapter.name, config.instance ?? adapter.name);
       }
 
