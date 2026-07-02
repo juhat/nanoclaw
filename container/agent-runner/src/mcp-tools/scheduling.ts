@@ -75,13 +75,19 @@ export const scheduleTask: McpToolDefinition = {
     const recurrence = (args.recurrence as string) || null;
     const script = (args.script as string) || null;
 
-    // Write as a system action — host will insert into inbound.db
+    // Scheduled tasks are proactive posts: they fire on a timer, not in reply
+    // to a user message, so they must land in the channel ROOT, not the thread
+    // the session happens to be bound to. We keep the channel (platform_id /
+    // channel_type) but force thread_id = null. If the agent wants a specific
+    // task to reply into a thread, it can still target one explicitly at send
+    // time (send_message to_channel_root=false in a threaded turn). Reactive
+    // replies to a user message keep their thread via the per-turn routing.
     writeMessageOut({
       id,
       kind: 'system',
       platform_id: r.platform_id,
       channel_type: r.channel_type,
-      thread_id: r.thread_id,
+      thread_id: null,
       content: JSON.stringify({
         action: 'schedule_task',
         taskId: id,
@@ -91,7 +97,7 @@ export const scheduleTask: McpToolDefinition = {
         recurrence,
         platformId: r.platform_id,
         channelType: r.channel_type,
-        threadId: r.thread_id,
+        threadId: null,
       }),
     });
 

@@ -3,7 +3,7 @@ import { getPendingMessages, markProcessing, markCompleted, type MessageInRow } 
 import { writeMessageOut } from './db/messages-out.js';
 import { getInboundDb, touchHeartbeat, clearStaleProcessingAcks } from './db/connection.js';
 import { clearContinuation, migrateLegacyContinuation, setContinuation } from './db/session-state.js';
-import { clearCurrentInReplyTo, setCurrentInReplyTo } from './current-batch.js';
+import { clearCurrentInReplyTo, clearCurrentThread, setCurrentInReplyTo, setCurrentThread } from './current-batch.js';
 import {
   formatMessages,
   extractRouting,
@@ -238,6 +238,9 @@ export async function runPollLoop(config: PollLoopConfig): Promise<void> {
     // Publish the batch's in_reply_to so MCP tools (send_message, send_file)
     // can stamp it on outbound rows — needed for a2a return-path routing.
     setCurrentInReplyTo(routing.inReplyTo);
+    // Publish the trigger's thread so send_message defaults to the room for a
+    // proactive/scheduled wake (thread_id null) and to the thread for a reply.
+    setCurrentThread(routing.threadId);
     try {
       const result = await processQuery(
         query,
@@ -276,6 +279,7 @@ export async function runPollLoop(config: PollLoopConfig): Promise<void> {
       });
     } finally {
       clearCurrentInReplyTo();
+      clearCurrentThread();
     }
 
     // Ensure completed even if processQuery ended without a result event

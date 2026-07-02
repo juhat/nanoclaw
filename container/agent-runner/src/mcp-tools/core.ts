@@ -9,7 +9,7 @@
 import fs from 'fs';
 import path from 'path';
 
-import { getCurrentInReplyTo } from '../current-batch.js';
+import { getCurrentInReplyTo, getCurrentThread } from '../current-batch.js';
 import { findByName, getAllDestinations } from '../destinations.js';
 import { getMessageIdBySeq, getRoutingBySeq, writeMessageOut } from '../db/messages-out.js';
 import { getSessionRouting } from '../db/session-routing.js';
@@ -48,19 +48,36 @@ function destinationList(): string {
  * the same channel the session is bound to, the session's thread_id is
  * preserved so replies land in the correct thread. Otherwise thread_id
  * is null (a cross-destination send starts a new conversation).
+ *
+ * If `toChannelRoot` is true, thread_id is forced to null so the message
+ * lands in the channel root instead of the current thread — use for
+ * broadcasts/warnings that should be visible in the main room, not buried
+ * in a thread. Has no effect on agent-to-agent destinations.
+ *
+ * The default reply thread follows the CURRENT TURN's trigger (see
+ * getCurrentThread), not the session's static routing: a proactive/scheduled
+ * wake carries a null trigger thread and therefore replies to the room, while
+ * a reply to a threaded user message stays in that thread. Falls back to the
+ * session routing when no turn is active (defensive).
  */
+function replyThread(sessionThreadId: string | null): string | null {
+  const turn = getCurrentThread();
+  return turn.set ? turn.threadId : sessionThreadId;
+}
+
 function resolveRouting(
   to: string | undefined,
+  toChannelRoot = false,
 ): { channel_type: string; platform_id: string; thread_id: string | null; resolvedName: string } | { error: string } {
   if (!to) {
-    // Default: reply to whatever thread/channel this session is bound to.
+    // Default: reply to whatever thread/channel this turn came from.
     const session = getSessionRouting();
     if (session.channel_type && session.platform_id) {
       return {
         channel_type: session.channel_type,
         platform_id: session.platform_id,
-        thread_id: session.thread_id,
-        resolvedName: '(current conversation)',
+        thread_id: toChannelRoot ? null : replyThread(session.thread_id),
+        resolvedName: toChannelRoot ? '(main room)' : '(current conversation)',
       };
     }
     // No session routing (e.g., agent-shared or internal-only agent) —
@@ -81,7 +98,9 @@ function resolveRouting(
     // preserve the thread_id so replies land in the correct thread.
     const session = getSessionRouting();
     const threadId =
-      session.channel_type === dest.channelType && session.platform_id === dest.platformId ? session.thread_id : null;
+      toChannelRoot || !(session.channel_type === dest.channelType && session.platform_id === dest.platformId)
+        ? null
+        : replyThread(session.thread_id);
     return {
       channel_type: dest.channelType!,
       platform_id: dest.platformId!,
@@ -104,6 +123,11 @@ export const sendMessage: McpToolDefinition = {
           description: 'Destination name (e.g., "family", "worker-1"). Optional if you have only one destination.',
         },
         text: { type: 'string', description: 'Message content' },
+        to_channel_root: {
+          type: 'boolean',
+          description:
+            'Post to the channel root (main room) instead of the current thread. Use for broadcasts, warnings, or reminders that should be visible to everyone in the main room rather than buried in a thread. Default false (reply in the current thread).',
+        },
       },
       required: ['text'],
     },
@@ -112,7 +136,7 @@ export const sendMessage: McpToolDefinition = {
     const text = args.text as string;
     if (!text) return err('text is required');
 
-    const routing = resolveRouting(args.to as string | undefined);
+    const routing = resolveRouting(args.to as string | undefined, args.to_channel_root === true);
     if ('error' in routing) return err(routing.error);
 
     const id = generateId();

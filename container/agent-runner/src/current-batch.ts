@@ -27,3 +27,31 @@ export function getCurrentInReplyTo(): string | null {
   return currentInReplyTo;
 }
 
+/**
+ * The thread the batch currently being processed was triggered from.
+ *
+ * `set` is false when no batch is active (defensive — MCP tools always run
+ * inside a batch today). When a batch is active, `threadId` is the trigger's
+ * thread — null for a proactive/scheduled wake (which should post to the
+ * channel root), or the thread id for a reply to a threaded user message.
+ *
+ * MCP tools prefer this over the session's static routing so a scheduled task
+ * posts to the room while a reply to a threaded message stays in that thread.
+ */
+let currentThreadId: string | null = null;
+let currentThreadSet = false;
+
+export function setCurrentThread(threadId: string | null): void {
+  currentThreadId = threadId;
+  currentThreadSet = true;
+}
+
+export function clearCurrentThread(): void {
+  currentThreadId = null;
+  currentThreadSet = false;
+}
+
+export function getCurrentThread(): { set: boolean; threadId: string | null } {
+  return { set: currentThreadSet, threadId: currentThreadId };
+}
+
