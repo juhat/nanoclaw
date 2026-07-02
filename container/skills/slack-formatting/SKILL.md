@@ -9,9 +9,10 @@ When responding to Slack channels, use Slack's mrkdwn syntax instead of standard
 
 ## How to detect Slack context
 
-Check your group folder name or workspace path:
-- Folder starts with `slack_` (e.g., `slack_engineering`, `slack_general`)
-- Or check `/workspace/group/` path for `slack_` prefix
+The runtime system prompt at the top of each turn names the channel you're replying to.
+If the destination's `channel_type` is `slack` (or the message came from a Slack channel),
+use mrkdwn as described below. Do NOT rely on the group folder name — groups can have any
+name (e.g. `appmaintainers-devmeeting`), not just a `slack_` prefix.
 
 ## Formatting reference
 
@@ -34,7 +35,17 @@ Check your group folder name or workspace path:
 <#C1234567890>                       # Mention channel by ID
 <!here>                              # @here
 <!channel>                           # @channel
+<!everyone>                          # @everyone
 ```
+
+**Special mentions use `!`, not `@`.** The `<@...>` form is ONLY for a specific user ID
+(`<@U12345>`). For @here / @channel / @everyone the prefix is `!`:
+
+- ✅ `<!here>`  ❌ `<@here>`  ❌ `@here`
+- ✅ `<!channel>`  ❌ `<@channel>`
+
+Plain `@here` (no angle brackets) does **not** notify anyone when posted via the Slack API —
+it renders as literal text. The angle brackets are required; only the prefix differs by mention type.
 
 ### Lists
 
